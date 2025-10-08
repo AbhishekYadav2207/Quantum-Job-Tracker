@@ -1,0 +1,312 @@
+<!-- [file name]: templates/jobs.html -->
+<!-- [file content begin] -->
+{% extends "base.html" %}
+{% block title %}Jobs - Quantum Job Tracker{% endblock %}
+{% block icon %}bi-list-task{% endblock %}
+{% block page_title %}Quantum Jobs{% endblock %}
+{% block subtitle %}Monitor and manage your quantum computing jobs{% endblock %}
+
+{% block header_actions %}
+<div class="btn-group">
+  <button class="btn btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#filtersCollapse">
+    <i class="bi bi-funnel me-1"></i>Filters
+  </button>
+  <a href="{{ url_for('dashboard') }}" class="btn btn-primary">
+    <i class="bi bi-plus-circle me-1"></i>New Job
+  </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- CRN Management -->
+<div class="card mb-4">
+  <div class="card-header bg-dark text-white">
+    <i class="bi bi-cloud me-2"></i>Instance Configuration
+  </div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('jobs') }}" class="row g-3 align-items-end">
+      <div class="col-md-8">
+        <label class="form-label fw-semibold">Cloud Resource Name (CRN)</label>
+        <input type="text" class="form-control" name="crn"
+               placeholder="crn:v1:bluemix:public:quantum-computing:..."
+               value="{{ current_crn or '' }}">
+        <div class="form-text">Required for private IBM Cloud quantum instances</div>
+      </div>
+      <div class="col-md-4">
+        <div class="d-grid gap-2">
+          <button type="submit" class="btn btn-primary">Update CRN</button>
+          {% if current_crn %}
+          <button type="button" class="btn btn-outline-secondary"
+                  onclick="document.querySelector('input[name=\"crn\"]').value=''; this.form.submit()">
+            Clear CRN
+          </button>
+          {% endif %}
+        </div>
+      </div>
+    </form>
+
+    <div class="mt-3">
+      {% if has_private_service %}
+        <span class="badge bg-success">
+          <i class="bi bi-check-circle me-1"></i> Connected to private instance
+        </span>
+      {% else %}
+        <span class="badge bg-info">
+          <i class="bi bi-cloud me-1"></i> Using public IBM Quantum only
+        </span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="collapse mb-4" id="filtersCollapse">
+  <div class="card">
+    <div class="card-header bg-light">
+      <h6 class="mb-0">
+        <i class="bi bi-funnel me-2"></i>Filter Jobs
+      </h6>
+    </div>
+    <div class="card-body">
+      <form method="GET" class="row g-3">
+        <div class="col-md-3">
+          <label class="form-label">User</label>
+          <select class="form-select" name="user">
+            <option value="">All Users</option>
+            <option value="{{ current_user_id }}" {% if filters.user == current_user_id %}selected{% endif %}>
+              Me ({{ current_user_id[:8] }}...)
+            </option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Backend</label>
+          <select class="form-select" name="backend">
+            <option value="">All Backends</option>
+            {% for backend in backends %}
+            <option value="{{ backend }}" {% if filters.backend == backend %}selected{% endif %}>
+              {{ backend }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Status</label>
+          <select class="form-select" name="status">
+            <option value="">All Statuses</option>
+            <option value="RUNNING" {% if filters.status == 'RUNNING' %}selected{% endif %}>Running</option>
+            <option value="QUEUED" {% if filters.status == 'QUEUED' %}selected{% endif %}>Queued</option>
+            <option value="COMPLETED" {% if filters.status == 'COMPLETED' %}selected{% endif %}>Completed</option>
+            <option value="FAILED" {% if filters.status == 'FAILED' %}selected{% endif %}>Failed</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Tags</label>
+          <input type="text" class="form-control" name="tags"
+                 placeholder="tag1,tag2" value="{{ filters.tags or '' }}">
+        </div>
+        <div class="col-12">
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-filter me-1"></i>Apply Filters
+            </button>
+            <a href="{{ url_for('jobs') }}" class="btn btn-outline-secondary">
+              <i class="bi bi-x-circle me-1"></i>Clear
+            </a>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Jobs Table -->
+{% if jobs %}
+<div class="card">
+  <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+    <h5 class="card-title mb-0">
+      <i class="bi bi-table me-2"></i>Recent Jobs
+    </h5>
+    <span class="badge bg-light text-dark">{{ jobs|length }} jobs</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Job ID</th>
+            <th>Status</th>
+            <th>Backend</th>
+            <th>Created</th>
+            <th>Estimated Start</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for job in jobs %}
+          <tr data-job-id="{{ job.job_id }}" class="job-row">
+            <td>
+              <div class="d-flex align-items-center">
+                <div class="flex-shrink-0">
+                  <i class="bi bi-diagram-3 text-muted"></i>
+                </div>
+                <div class="flex-grow-1 ms-3">
+                  <code class="text-sm">{{ job.job_id|truncate(12) }}</code>
+                  <br>
+                  <small class="text-muted">{{ job.program_id }}</small>
+                  {% if job.tags %}
+                  <div class="mt-1">
+                    {% for tag in job.tags %}
+                    <span class="badge bg-secondary badge-sm me-1">{{ tag }}</span>
+                    {% endfor %}
+                  </div>
+                  {% endif %}
+                </div>
+              </div>
+            </td>
+            <td>
+              <span class="badge bg-{{ job.status_class }} job-status">
+                {{ job.status }}
+              </span>
+              {% if job.user_id == current_user_id %}
+              <br><small class="text-muted">Your job</small>
+              {% endif %}
+            </td>
+            <td>{{ job.backend }}</td>
+            <td>
+              <small>{{ job.creation_time }}</small>
+            </td>
+            <td>
+              <small class="job-eta text-muted">
+                {% if job.estimated_start %}
+                  {{ job.estimated_start }}
+                {% else %}
+                  -
+                {% endif %}
+              </small>
+            </td>
+            <td>
+              <div class="btn-group btn-group-sm">
+                <a href="{{ url_for('job_details', job_id=job.job_id) }}"
+                   class="btn btn-outline-primary">
+                  <i class="bi bi-eye"></i>
+                </a>
+                {% if job.status in ['RUNNING', 'QUEUED'] %}
+                <form method="POST" action="{{ url_for('cancel_job', job_id=job.job_id) }}"
+                      class="d-inline" onsubmit="return confirm('Cancel this job?')">
+                  <button type="submit" class="btn btn-outline-danger">
+                    <i class="bi bi-x-circle"></i>
+                  </button>
+                </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<!-- Empty State -->
+<div class="text-center py-5">
+  <div class="bg-light rounded-circle p-4 d-inline-block mb-4">
+    <i class="bi bi-inbox display-1 text-muted"></i>
+  </div>
+  <h4 class="text-muted">No quantum jobs found</h4>
+  <p class="text-secondary mb-4">This could be because:</p>
+
+  <div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+      <div class="row text-start">
+        <div class="col-md-6 mb-3">
+          <div class="d-flex">
+            <i class="bi bi-1-circle text-primary me-3 mt-1"></i>
+            <div>
+              <h6>No jobs submitted yet</h6>
+              <p class="text-muted small mb-0">Submit your first quantum job to get started</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6 mb-3">
+          <div class="d-flex">
+            <i class="bi bi-2-circle text-primary me-3 mt-1"></i>
+            <div>
+              <h6>Credentials need update</h6>
+              <p class="text-muted small mb-0">Check your IBM Quantum token and CRN</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6 mb-3">
+          <div class="d-flex">
+            <i class="bi bi-3-circle text-primary me-3 mt-1"></i>
+            <div>
+              <h6>Service unavailable</h6>
+              <p class="text-muted small mb-0">Quantum service might be temporarily down</p>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6 mb-3">
+          <div class="d-flex">
+            <i class="bi bi-4-circle text-primary me-3 mt-1"></i>
+            <div>
+              <h6>Filters too strict</h6>
+              <p class="text-muted small mb-0">Try adjusting your filter criteria</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-4">
+    <a href="{{ url_for('dashboard') }}" class="btn btn-primary me-3">
+      <i class="bi bi-speedometer2 me-2"></i>Go to Dashboard
+    </a>
+    <button class="btn btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#filtersCollapse">
+      <i class="bi bi-funnel me-2"></i>Adjust Filters
+    </button>
+  </div>
+</div>
+{% endif %}
+
+<!-- Pagination (Future Implementation) -->
+{% if jobs and jobs|length >= 20 %}
+<nav class="mt-4">
+  <ul class="pagination justify-content-center">
+    <li class="page-item disabled">
+      <a class="page-link" href="#">Previous</a>
+    </li>
+    <li class="page-item active">
+      <a class="page-link" href="#">1</a>
+    </li>
+    <li class="page-item">
+      <a class="page-link" href="#">2</a>
+    </li>
+    <li class="page-item">
+      <a class="page-link" href="#">3</a>
+    </li>
+    <li class="page-item">
+      <a class="page-link" href="#">Next</a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Initialize real-time updates
+  setInterval(updateJobStatuses, 30000);
+  setTimeout(updateJobStatuses, 1000);
+
+  // Auto-expand filters if filters are active
+  {% if filters.user or filters.backend or filters.status or filters.tags %}
+  document.addEventListener('DOMContentLoaded', function() {
+    const collapse = new bootstrap.Collapse(document.getElementById('filtersCollapse'));
+    collapse.show();
+  });
+  {% endif %}
+</script>
+{% endblock %}
+<!-- [file content end] -->

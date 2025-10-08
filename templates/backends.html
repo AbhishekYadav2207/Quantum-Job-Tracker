@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="container-fluid">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-server"></i> Backend Status</h2>
+    <small class="text-muted">Last updated: {{ last_update }}</small>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-md-3 mb-3">
+      <div class="card text-center bg-primary text-white">
+        <div class="card-body">
+          <h5 class="card-title">{{ backends|length }}</h5>
+          <p class="card-text">Total Backends</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 mb-3">
+      <div class="card text-center bg-success text-white">
+        <div class="card-body">
+          <h5 class="card-title">{{ operational_backends }}</h5>
+          <p class="card-text">Operational</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 mb-3">
+      <div class="card text-center bg-info text-white">
+        <div class="card-body">
+          <h5 class="card-title">{{ public_backends }}</h5>
+          <p class="card-text">Public Backends</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 mb-3">
+      <div class="card text-center bg-warning text-white">
+        <div class="card-body">
+          <h5 class="card-title">{{ private_backends }}</h5>
+          <p class="card-text">Private Backends</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    {% for backend in backends %}
+    <div class="col-md-6 col-lg-4 mb-4">
+      <div class="card h-100 shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="card-title mb-0">{{ backend.name }}</h5>
+          <span class="badge bg-{% if backend.service_type == 'public' %}info{% else %}success{% endif %}">
+            {{ backend.service_type|upper }}
+          </span>
+        </div>
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <span class="fw-semibold">Status:</span>
+            <span class="badge bg-{% if 'Available' in backend.status or 'Operational' in backend.status %}success{% else %}danger{% endif %}">
+              {{ backend.status }}
+            </span>
+          </div>
+
+          <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="fw-semibold">Qubits:</span>
+              <span class="badge bg-secondary">{{ backend.qubits }}</span>
+            </div>
+            <div class="qubit-visualization mt-2">
+              {% for i in range(backend.qubits|int if backend.qubits != 'Unknown' else 0) %}
+              <span class="qubit-dot {% if i < 5 %}bg-success{% elif i < 10 %}bg-info{% elif i < 20 %}bg-warning{% else %}bg-danger{% endif %}"></span>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="fw-semibold">Queue:</span>
+              <span class="badge {% if backend.queue == 0 %}bg-success{% elif backend.queue < 5 %}bg-info{% elif backend.queue < 10 %}bg-warning{% else %}bg-danger{% endif %}">
+                {{ backend.queue }} jobs
+              </span>
+            </div>
+            <div class="progress mt-2" style="height: 10px;">
+              <div class="progress-bar
+                {% if backend.queue == 0 %}bg-success
+                {% elif backend.queue < 5 %}bg-info
+                {% elif backend.queue < 10 %}bg-warning
+                {% else %}bg-danger{% endif %}"
+                style="width: {{ backend.queue_percentage }}%">
+              </div>
+            </div>
+          </div>
+
+          <div class="row small text-muted">
+            <div class="col-6">
+              <i class="bi bi-clock"></i> {{ backend.estimated_wait }}
+            </div>
+            <div class="col-6 text-end">
+              {% if backend.simulator %}
+              <i class="bi bi-cpu"></i> Simulator
+              {% else %}
+              <i class="bi bi-cpu-fill"></i> Hardware
+              {% endif %}
+            </div>
+          </div>
+
+          {% if backend.status_msg %}
+          <div class="alert alert-warning mt-3 py-2 small">
+            <i class="bi bi-info-circle"></i> {{ backend.status_msg }}
+          </div>
+          {% endif %}
+        </div>
+        <div class="card-footer bg-transparent">
+          <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+            <a href="{{ url_for('backend_details', backend_name=backend.name) }}" class="btn btn-sm btn-outline-secondary me-md-2">
+              <i class="bi bi-info-circle"></i> View Details
+            </a>
+<a href="{{ url_for('backend_analytics', backend_name=backend.name) }}" class="btn btn-warning">Analytics</a>
+
+            <a href="{{ url_for('dashboard') }}?backend={{ backend.name }}" class="btn btn-sm btn-outline-primary">
+              <i class="bi bi-play-circle"></i> Use This Backend
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card mt-4">
+    <div class="card-header">
+      <h5 class="card-title mb-0"><i class="bi bi-bar-chart"></i> Queue Comparison</h5>
+    </div>
+    <div class="card-body">
+      <canvas id="queueChart" height="100"></canvas>
+    </div>
+  </div>
+</div>
+
+<style>
+.qubit-visualization {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 5px;
+}
+.qubit-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.queue-visualization {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+.queue-item {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  display: inline-block;
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const ctx = document.getElementById('queueChart').getContext('2d');
+  const backends = [
+    {% for backend in backends %}
+    {
+      name: '{{ backend.name }}',
+      queue: {{ backend.queue if backend.queue != "Unknown" else 0 }},
+      operational: {% if 'Available' in backend.status or 'Operational' in backend.status %}true{% else %}false{% endif %},
+      service_type: '{{ backend.service_type }}'
+    },
+    {% endfor %}
+  ];
+
+  // Filter out non-operational backends and sort by queue length
+  const operationalBackends = backends.filter(b => b.operational).sort((a, b) => a.queue - b.queue);
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: operationalBackends.map(b => b.name),
+      datasets: [{
+        label: 'Jobs in Queue',
+        data: operationalBackends.map(b => b.queue),
+        backgroundColor: operationalBackends.map(b =>
+          b.queue === 0 ? 'rgba(40, 167, 69, 0.7)' :
+          b.queue < 5 ? 'rgba(23, 162, 184, 0.7)' :
+          b.queue < 10 ? 'rgba(255, 193, 7, 0.7)' :
+          'rgba(220, 53, 69, 0.7)'
+        ),
+        borderColor: operationalBackends.map(b =>
+          b.queue === 0 ? 'rgba(40, 167, 69, 1)' :
+          b.queue < 5 ? 'rgba(23, 162, 184, 1)' :
+          b.queue < 10 ? 'rgba(255, 193, 7, 1)' :
+          'rgba(220, 53, 69, 1)'
+        ),
+        borderWidth: 1
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      plugins: {
+        title: {
+          display: true,
+          text: 'Queue Length by Backend (Operational Only)'
+        },
+        legend: {
+          display: false
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Jobs in Queue'
+          }
+        }
+      }
+    }
+  });
+});
+</script>
+{% endblock %}

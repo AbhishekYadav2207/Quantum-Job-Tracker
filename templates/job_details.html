@@ -1,0 +1,278 @@
+<!-- [file name]: templates/job_details.html -->
+<!-- [file content begin] -->
+{% extends "base.html" %}
+{% block title %}Job Details - {{ job.job_id }}{% endblock %}
+{% block icon %}bi-info-circle{% endblock %}
+{% block page_title %}Job Details{% endblock %}
+{% block subtitle %}Detailed information about quantum job execution{% endblock %}
+
+{% block header_actions %}
+<a href="{{ url_for('jobs') }}" class="btn btn-outline-secondary me-2">
+  <i class="bi bi-arrow-left me-1"></i>Back to Jobs
+</a>
+{% if job.status in ['RUNNING', 'QUEUED'] %}
+<form method="POST" action="{{ url_for('cancel_job', job_id=job.job_id) }}"
+      class="d-inline" onsubmit="return confirm('Are you sure you want to cancel this job?')">
+  <button type="submit" class="btn btn-danger">
+    <i class="bi bi-x-circle me-1"></i>Cancel Job
+  </button>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="row">
+  <!-- Job Information -->
+  <div class="col-lg-8">
+    <!-- Basic Info Card -->
+    <div class="card mb-4">
+      <div class="card-header bg-dark text-white">
+        <i class="bi bi-info-circle me-2"></i>Job Information
+      </div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-6">
+            <table class="table table-borderless">
+              <tr>
+                <th width="140">Job ID:</th>
+                <td><code>{{ job.job_id }}</code></td>
+              </tr>
+              <tr>
+                <th>Backend:</th>
+                <td>
+                  {{ job.backend }}
+                  <span class="badge bg-{% if job.service_type == 'private' %}success{% else %}info{% endif %} ms-2">
+                    {{ job.service_type|upper }}
+                  </span>
+                </td>
+              </tr>
+              <tr>
+                <th>Status:</th>
+                <td>
+                  <span class="badge bg-{{ job.status_class }}">
+                    {{ job.status }}
+                  </span>
+                </td>
+              </tr>
+            </table>
+          </div>
+          <div class="col-md-6">
+            <table class="table table-borderless">
+              <tr>
+                <th width="140">Created:</th>
+                <td>{{ job.creation_time }}</td>
+              </tr>
+              <tr>
+                <th>Program ID:</th>
+                <td>{{ job.program_id }}</td>
+              </tr>
+              <tr>
+                <th>Tags:</th>
+                <td>
+                  {% if job.tags %}
+                    {% for tag in job.tags %}
+                      <span class="badge bg-secondary me-1">{{ tag }}</span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="text-muted">No tags</span>
+                  {% endif %}
+                </td>
+              </tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results Card -->
+    {% if result %}
+    <div class="card mb-4">
+      <div class="card-header bg-success text-white">
+        <i class="bi bi-graph-up me-2"></i>Job Results
+      </div>
+      <div class="card-body">
+        {% if result.counts %}
+          <h5 class="mb-3">Measurement Counts:</h5>
+          <div class="table-responsive">
+            <table class="table table-bordered table-sm">
+              <thead class="table-light">
+                <tr>
+                  <th>State</th>
+                  <th>Count</th>
+                  <th>Probability</th>
+                  <th>Visualization</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for state, count in result.counts.items() %}
+                <tr>
+                  <td><code>{{ state }}</code></td>
+                  <td>{{ count }}</td>
+                  <td>{{ "%.2f"|format(count / 1024 * 100) }}%</td>
+                  <td>
+                    <div class="progress" style="height: 8px; width: 100px;">
+                      <div class="progress-bar" style="width: {{ (count / 1024 * 100) }}%"></div>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <h5 class="mb-3">Raw Result:</h5>
+          <pre class="bg-light p-3 border rounded"><code>{{ result.raw }}</code></pre>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Timeline Card -->
+    <div class="card">
+      <div class="card-header bg-info text-white">
+        <i class="bi bi-clock-history me-2"></i>Job Timeline
+      </div>
+      <div class="card-body">
+        {% if timeline %}
+          <div class="timeline">
+            {% for event in timeline %}
+            <div class="timeline-event">
+              <div class="timeline-badge bg-{{
+                'success' if event.type == 'completed'
+                else 'danger' if event.type == 'failed'
+                else 'warning' if event.type == 'queued'
+                else 'primary' if event.type == 'running'
+                else 'info'
+              }}">
+                <i class="bi {{
+                  'bi-check-circle' if event.type == 'completed'
+                  else 'bi-exclamation-circle' if event.type == 'failed'
+                  else 'bi-clock' if event.type == 'queued'
+                  else 'bi-play-circle' if event.type == 'running'
+                  else 'bi-arrow-repeat'
+                }}"></i>
+              </div>
+              <div class="timeline-content">
+                <h6 class="mb-1">{{ event.type|title }}</h6>
+                <p class="text-muted small mb-0">
+                  <i class="bi bi-clock me-1"></i>{{ event.timestamp }}
+                </p>
+                {% if event.data %}
+                <pre class="small mt-2 mb-0 text-muted">{{ event.data|tojson|safe }}</pre>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="text-center py-4 text-muted">
+            <i class="bi bi-clock-history display-4 d-block mb-3"></i>
+            <p>No timeline data available yet</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="col-lg-4">
+    <!-- Status Card -->
+    <div class="card mb-4">
+      <div class="card-header bg-{{ job.status_class }} text-white">
+        <i class="bi bi-activity me-2"></i>Current Status
+      </div>
+      <div class="card-body text-center">
+        <div class="display-1 text-{{ job.status_class }} mb-3">
+          <i class="bi {{
+            'bi-check-circle' if job.status == 'COMPLETED'
+            else 'bi-exclamation-circle' if job.status == 'FAILED'
+            else 'bi-play-circle' if job.status == 'RUNNING'
+            else 'bi-clock' if job.status == 'QUEUED'
+            else 'bi-question-circle'
+          }}"></i>
+        </div>
+        <h3 class="text-{{ job.status_class }}">{{ job.status }}</h3>
+        {% if job.estimated_start and job.status in ['QUEUED', 'RUNNING'] %}
+        <div class="mt-3">
+          <small class="text-muted">Estimated start:</small>
+          <div class="fw-semibold">{{ job.estimated_start }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="card mb-4">
+      <div class="card-header bg-primary text-white">
+        <i class="bi bi-lightning me-2"></i>Quick Actions
+      </div>
+      <div class="card-body">
+        <div class="d-grid gap-2">
+          <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary">
+            <i class="bi bi-plus-circle me-2"></i>Submit New Job
+          </a>
+          <button class="btn btn-outline-secondary" onclick="refreshJob()">
+            <i class="bi bi-arrow-clockwise me-2"></i>Refresh Status
+          </button>
+          {% if job.status == 'COMPLETED' and result %}
+          <button class="btn btn-outline-info" onclick="downloadResults()">
+            <i class="bi bi-download me-2"></i>Download Results
+          </button>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Technical Details -->
+    <div class="card">
+      <div class="card-header bg-secondary text-white">
+        <i class="bi bi-gear me-2"></i>Technical Details
+      </div>
+      <div class="card-body">
+        <dl class="row small">
+          <dt class="col-5">Job ID:</dt>
+          <dd class="col-7"><code>{{ job.job_id }}</code></dd>
+
+          <dt class="col-5">Backend:</dt>
+          <dd class="col-7">{{ job.backend }}</dd>
+
+          <dt class="col-5">Service Type:</dt>
+          <dd class="col-7">{{ job.service_type|upper }}</dd>
+
+          <dt class="col-5">Program ID:</dt>
+          <dd class="col-7">{{ job.program_id }}</dd>
+
+          <dt class="col-5">Creation Time:</dt>
+          <dd class="col-7">{{ job.creation_time }}</dd>
+
+          {% if job.tags %}
+          <dt class="col-5">Tags:</dt>
+          <dd class="col-7">
+            {% for tag in job.tags %}
+            <span class="badge bg-secondary badge-sm me-1">{{ tag }}</span>
+            {% endfor %}
+          </dd>
+          {% endif %}
+        </dl>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  function refreshJob() {
+    window.location.reload();
+  }
+
+  function downloadResults() {
+    // Implement results download functionality
+    alert('Results download functionality would be implemented here');
+  }
+
+  // Load timeline data
+  loadJobTimeline('{{ job.job_id }}');
+</script>
+{% endblock %}
+<!-- [file content end] -->

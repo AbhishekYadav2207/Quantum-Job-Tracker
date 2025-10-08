@@ -1,0 +1,870 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block icon %}bi-bar-chart{% endblock %}
+{% block page_title %}Backend Analytics{% endblock %}
+{% block subtitle %}Performance analytics for {{ backend_name }}{% endblock %}
+
+{% block header_actions %}
+<a href="{{ url_for('backends') }}" class="btn btn-outline-secondary me-2">
+  <i class="bi bi-arrow-left me-1"></i>Back to Backends
+</a>
+<button class="btn btn-primary" onclick="refreshBackendData()">
+  <i class="bi bi-arrow-clockwise me-1"></i>Refresh Data
+</button>
+{% endblock %}
+
+{% block content %}
+<style>
+:root {
+  --primary-gradient: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+  --secondary-gradient: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
+  --success-gradient: linear-gradient(135deg, #0ba360 0%, #3cba92 100%);
+  --warning-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  --info-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  --dark-gradient: linear-gradient(135deg, #434343 0%, #000000 100%);
+  --card-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  --card-hover-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+}
+
+body {
+  background-color: #f5f7fb;
+  color: #2c3e50;
+}
+
+.card {
+  border-radius: 16px;
+  box-shadow: var(--card-shadow);
+  transition: all 0.3s ease;
+  border: none;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--card-hover-shadow);
+}
+
+.card-header {
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 1rem 1.5rem;
+  background: transparent !important;
+}
+
+.stats-card {
+  text-align: center;
+  padding: 1.5rem 1rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.stats-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--primary-gradient);
+}
+
+.stats-card:nth-child(2)::before {
+  background: var(--secondary-gradient);
+}
+
+.stats-card:nth-child(3)::before {
+  background: var(--success-gradient);
+}
+
+.stats-card:nth-child(4)::before {
+  background: var(--warning-gradient);
+}
+
+.stats-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin: 0.5rem 0;
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.stats-card:nth-child(2) .stats-value {
+  background: var(--secondary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.stats-card:nth-child(3) .stats-value {
+  background: var(--success-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.stats-card:nth-child(4) .stats-value {
+  background: var(--warning-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.stats-label {
+  font-size: 0.9rem;
+  color: #6c757d;
+  font-weight: 500;
+}
+
+.stats-change {
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.stats-change.positive {
+  color: #198754;
+}
+
+.stats-change.negative {
+  color: #dc3545;
+}
+
+.chart-container {
+  position: relative;
+  height: 300px;
+  width: 100%;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.grid-col-3 {
+  grid-column: span 3;
+}
+
+.grid-col-4 {
+  grid-column: span 4;
+}
+
+.grid-col-6 {
+  grid-column: span 6;
+}
+
+.grid-col-12 {
+  grid-column: span 12;
+}
+
+@media (max-width: 1200px) {
+  .grid-col-3, .grid-col-4 {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 768px) {
+  .grid-col-3, .grid-col-4, .grid-col-6 {
+    grid-column: span 12;
+  }
+}
+
+.chart-actions {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  z-index: 10;
+  display: flex;
+  gap: 8px;
+}
+
+.chart-btn {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chart-btn:hover {
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.filter-bar {
+  background: #fff;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--card-shadow);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+
+.filter-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.filter-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4a5568;
+}
+
+.filter-select {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  font-size: 0.9rem;
+}
+
+.last-updated {
+  margin-left: auto;
+  font-size: 0.9rem;
+  color: #718096;
+}
+
+.bg-purple {
+  background: var(--primary-gradient) !important;
+}
+
+.bg-indigo {
+  background: var(--info-gradient) !important;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #1a202c;
+    color: #e2e8f0;
+  }
+
+  .card {
+    background-color: #2d3748;
+  }
+
+  .stats-label {
+    color: #a0aec0;
+  }
+
+  .filter-bar {
+    background: #2d3748;
+  }
+
+  .filter-label {
+    color: #e2e8f0;
+  }
+
+  .filter-select {
+    background: #4a5568;
+    border-color: #4a5568;
+    color: #e2e8f0;
+  }
+
+  .chart-btn {
+    background: rgba(45, 55, 72, 0.9);
+    border-color: #4a5568;
+    color: #e2e8f0;
+  }
+}
+</style>
+
+<div class="filter-bar">
+  <div class="filter-item">
+    <span class="filter-label">Time Range</span>
+    <select class="filter-select" id="timeRange">
+      <option value="7">Last 7 days</option>
+      <option value="30" selected>Last 30 days</option>
+      <option value="90">Last 90 days</option>
+    </select>
+  </div>
+
+  <div class="filter-item">
+    <span class="filter-label">Qubit Selection</span>
+    <select class="filter-select" id="qubitSelection">
+      <option value="all" selected>All Qubits</option>
+      {% for i in range(calibration.qubits|length) %}
+      <option value="q{{ i }}">Qubit {{ i }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="filter-item">
+    <span class="filter-label">Metric</span>
+    <select class="filter-select" id="metricSelection">
+      <option value="all" selected>All Metrics</option>
+      <option value="t1">T1 Times</option>
+      <option value="t2">T2 Times</option>
+      <option value="readout">Readout Error</option>
+      <option value="gate">Gate Error</option>
+    </select>
+  </div>
+
+  <div class="last-updated">
+    <i class="bi bi-clock-history me-1"></i>Last updated: <span id="lastUpdatedTime">{{ last_updated }}</span>
+  </div>
+</div>
+
+<div class="dashboard-grid">
+  <!-- Stats Overview Cards -->
+  <div class="grid-col-3">
+    <div class="card stats-card">
+      <div class="stats-label">Average T1 (μs)</div>
+      <div class="stats-value" id="avg-t1">0</div>
+      <div class="stats-change positive" id="t1-trend">
+        <i class="bi bi-arrow-up"></i> <span>2.5%</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-col-3">
+    <div class="card stats-card">
+      <div class="stats-label">Average T2 (μs)</div>
+      <div class="stats-value" id="avg-t2">0</div>
+      <div class="stats-change negative" id="t2-trend">
+        <i class="bi bi-arrow-down"></i> <span>1.8%</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-col-3">
+    <div class="card stats-card">
+      <div class="stats-label">Avg Readout Error</div>
+      <div class="stats-value" id="avg-readout">0</div>
+      <div class="stats-change positive" id="readout-trend">
+        <i class="bi bi-arrow-up"></i> <span>0.7%</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-col-3">
+    <div class="card stats-card">
+      <div class="stats-label">Avg Gate Error</div>
+      <div class="stats-value" id="avg-gate-error">0</div>
+      <div class="stats-change negative" id="gate-error-trend">
+        <i class="bi bi-arrow-down"></i> <span>3.2%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- T1 Radar Chart -->
+  <div class="grid-col-6">
+    <div class="card mb-4">
+      <div class="card-header">
+        <i class="bi bi-graph-up-arrow"></i> Qubit T1 Times (Radar)
+      </div>
+      <div class="card-body position-relative">
+        <div class="chart-actions">
+          <button class="chart-btn" title="Zoom in" onclick="zoomChart('t1RadarChart', 0.1)"><i class="bi bi-zoom-in"></i></button>
+          <button class="chart-btn" title="Zoom out" onclick="zoomChart('t1RadarChart', -0.1)"><i class="bi bi-zoom-out"></i></button>
+          <button class="chart-btn" title="Reset zoom" onclick="resetZoom('t1RadarChart')"><i class="bi bi-arrow-counterclockwise"></i></button>
+        </div>
+        <div class="chart-container"><canvas id="t1RadarChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- T2 Polar Area Chart -->
+  <div class="grid-col-6">
+    <div class="card mb-4">
+      <div class="card-header">
+        <i class="bi bi-graph-down"></i> Qubit T2 Times (Polar Area)
+      </div>
+      <div class="card-body position-relative">
+        <div class="chart-actions">
+          <button class="chart-btn" title="Zoom in" onclick="zoomChart('t2PolarChart', 0.1)"><i class="bi bi-zoom-in"></i></button>
+          <button class="chart-btn" title="Zoom out" onclick="zoomChart('t2PolarChart', -0.1)"><i class="bi bi-zoom-out"></i></button>
+          <button class="chart-btn" title="Reset zoom" onclick="resetZoom('t2PolarChart')"><i class="bi bi-arrow-counterclockwise"></i></button>
+        </div>
+        <div class="chart-container"><canvas id="t2PolarChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Readout Errors Line Chart -->
+  <div class="grid-col-6">
+    <div class="card mb-4">
+      <div class="card-header">
+        <i class="bi bi-bar-chart"></i> Readout Errors (Line)
+      </div>
+      <div class="card-body position-relative">
+        <div class="chart-actions">
+          <button class="chart-btn" title="Zoom in" onclick="zoomChart('readoutChart', 0.1)"><i class="bi bi-zoom-in"></i></button>
+          <button class="chart-btn" title="Zoom out" onclick="zoomChart('readoutChart', -0.1)"><i class="bi bi-zoom-out"></i></button>
+          <button class="chart-btn" title="Reset zoom" onclick="resetZoom('readoutChart')"><i class="bi bi-arrow-counterclockwise"></i></button>
+        </div>
+        <div class="chart-container"><canvas id="readoutChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gate Errors Horizontal Bar Chart -->
+  <div class="grid-col-6">
+    <div class="card mb-4">
+      <div class="card-header">
+        <i class="bi bi-exclamation-triangle"></i> Gate Errors (Horizontal Bar)
+      </div>
+      <div class="card-body position-relative">
+        <div class="chart-actions">
+          <button class="chart-btn" title="Zoom in" onclick="zoomChart('gateErrorChart', 0.1)"><i class="bi bi-zoom-in"></i></button>
+          <button class="chart-btn" title="Zoom out" onclick="zoomChart('gateErrorChart', -0.1)"><i class="bi bi-zoom-out"></i></button>
+          <button class="chart-btn" title="Reset zoom" onclick="resetZoom('gateErrorChart')"><i class="bi bi-arrow-counterclockwise"></i></button>
+        </div>
+        <div class="chart-container"><canvas id="gateErrorChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gate Lengths Pie Chart -->
+  <div class="grid-col-4">
+    <div class="card mb-4">
+      <div class="card-header">
+        <i class="bi bi-stopwatch"></i> Gate Lengths Distribution
+      </div>
+      <div class="card-body position-relative">
+        <div class="chart-actions">
+          <button class="chart-btn" title="Zoom in" onclick="zoomChart('gateLengthPieChart', 0.1)"><i class="bi bi-zoom-in"></i></button>
+          <button class="chart-btn" title="Zoom out" onclick="zoomChart('gateLengthPieChart', -0.1)"><i class="bi bi-zoom-out"></i></button>
+          <button class="chart-btn" title="Reset zoom" onclick="resetZoom('gateLengthPieChart')"><i class="bi bi-arrow-counterclockwise"></i></button>
+        </div>
+        <div class="chart-container"><canvas id="gateLengthPieChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Qubit Performance Scatter Chart -->
+  <div class="grid-col-4">
+    <div class="card mb-4">
+      <div class="card-header">
+        <i class="bi bi-scatter-chart"></i> T1 vs T2 Correlation
+      </div>
+      <div class="card-body position-relative">
+        <div class="chart-actions">
+          <button class="chart-btn" title="Zoom in" onclick="zoomChart('scatterChart', 0.1)"><i class="bi bi-zoom-in"></i></button>
+          <button class="chart-btn" title="Zoom out" onclick="zoomChart('scatterChart', -0.1)"><i class="bi bi-zoom-out"></i></button>
+          <button class="chart-btn" title="Reset zoom" onclick="resetZoom('scatterChart')"><i class="bi bi-arrow-counterclockwise"></i></button>
+        </div>
+        <div class="chart-container"><canvas id="scatterChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error Rates Bubble Chart -->
+  <div class="grid-col-4">
+    <div class="card mb-4">
+      <div class="card-header">
+        <i class="bi bi-circle"></i> Error Rates Comparison
+      </div>
+      <div class="card-body position-relative">
+        <div class="chart-actions">
+          <button class="chart-btn" title="Zoom in" onclick="zoomChart('bubbleChart', 0.1)"><i class="bi bi-zoom-in"></i></button>
+          <button class="chart-btn" title="Zoom out" onclick="zoomChart('bubbleChart', -0.1)"><i class="bi bi-zoom-out"></i></button>
+          <button class="chart-btn" title="Reset zoom" onclick="resetZoom('bubbleChart')"><i class="bi bi-arrow-counterclockwise"></i></button>
+        </div>
+        <div class="chart-container"><canvas id="bubbleChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+<script>
+// Store chart instances for zoom control
+const chartInstances = {};
+
+document.addEventListener('DOMContentLoaded', function () {
+  const calib = {{ calibration|tojson }};
+
+  // --- Extract Data ---
+  const qubitLabels = Object.keys(calib.qubits || {});
+  const T1 = qubitLabels.map(q => calib.qubits[q].T1?.value || 0);
+  const T2 = qubitLabels.map(q => calib.qubits[q].T2?.value || 0);
+  const readoutErr = qubitLabels.map(q => calib.qubits[q].readout_error?.value || 0);
+
+  const gateLabels = Object.keys(calib.gates || {});
+  const gateErrors = gateLabels.map(g => calib.gates[g].gate_error?.value || 0);
+  const gateLengths = gateLabels.map(g => calib.gates[g].gate_length?.value || 0);
+
+  // Calculate averages for stats cards
+  const avgT1 = T1.reduce((a, b) => a + b, 0) / T1.length;
+  const avgT2 = T2.reduce((a, b) => a + b, 0) / T2.length;
+  const avgReadout = readoutErr.reduce((a, b) => a + b, 0) / readoutErr.length;
+  const avgGateError = gateErrors.reduce((a, b) => a + b, 0) / gateErrors.length;
+
+  document.getElementById('avg-t1').textContent = avgT1.toFixed(2);
+  document.getElementById('avg-t2').textContent = avgT2.toFixed(2);
+  document.getElementById('avg-readout').textContent = avgReadout.toFixed(4);
+  document.getElementById('avg-gate-error').textContent = avgGateError.toFixed(4);
+
+  // Generate colors for charts
+  const generateColors = (count, alpha = 1) => {
+    const colors = [];
+    const hueStep = 360 / count;
+    for (let i = 0; i < count; i++) {
+      const hue = i * hueStep;
+      colors.push(`hsla(${hue}, 70%, 60%, ${alpha})`);
+    }
+    return colors;
+  };
+
+  const qubitColors = generateColors(qubitLabels.length);
+  const gateColors = generateColors(gateLabels.length);
+
+  // Common chart options with zoom/pan enabled
+  const commonChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'top',
+      },
+      zoom: {
+        pan: {
+          enabled: true,
+          mode: 'xy'
+        },
+        zoom: {
+          wheel: {
+            enabled: true,
+          },
+          pinch: {
+            enabled: true
+          },
+          mode: 'xy',
+        }
+      }
+    }
+  };
+
+  // --- Charts ---
+
+  // T1 Radar Chart
+  chartInstances.t1RadarChart = new Chart(document.getElementById('t1RadarChart'), {
+    type: 'radar',
+    data: {
+      labels: qubitLabels,
+      datasets: [{
+        label: 'T1 (μs)',
+        data: T1,
+        backgroundColor: 'rgba(106, 17, 203, 0.2)',
+        borderColor: 'rgba(106, 17, 203, 1)',
+        pointBackgroundColor: 'rgba(106, 17, 203, 1)',
+        pointBorderColor: '#fff',
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: 'rgba(106, 17, 203, 1)'
+      }]
+    },
+    options: {
+      ...commonChartOptions,
+      scales: {
+        r: {
+          angleLines: {
+            display: true
+          },
+          suggestedMin: 0
+        }
+      }
+    }
+  });
+
+  // T2 Polar Area Chart
+  chartInstances.t2PolarChart = new Chart(document.getElementById('t2PolarChart'), {
+    type: 'polarArea',
+    data: {
+      labels: qubitLabels,
+      datasets: [{
+        data: T2,
+        backgroundColor: qubitColors,
+      }]
+    },
+    options: commonChartOptions
+  });
+
+  // Readout Errors Line Chart
+  chartInstances.readoutChart = new Chart(document.getElementById('readoutChart'), {
+    type: 'line',
+    data: {
+      labels: qubitLabels,
+      datasets: [{
+        label: 'Readout Error',
+        data: readoutErr,
+        borderColor: '#ff9900',
+        backgroundColor: 'rgba(255, 153, 0, 0.1)',
+        fill: true,
+        tension: 0.3,
+        pointBackgroundColor: '#ff9900',
+        pointBorderColor: '#fff',
+        pointRadius: 5,
+        pointHoverRadius: 7
+      }]
+    },
+    options: {
+      ...commonChartOptions,
+      plugins: {
+        ...commonChartOptions.plugins,
+        legend: {
+          display: false
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true
+        }
+      }
+    }
+  });
+
+  // Gate Errors Horizontal Bar Chart
+  chartInstances.gateErrorChart = new Chart(document.getElementById('gateErrorChart'), {
+    type: 'bar',
+    data: {
+      labels: gateLabels,
+      datasets: [{
+        label: 'Gate Error',
+        data: gateErrors,
+        backgroundColor: gateColors,
+        borderColor: gateColors.map(color => color.replace('0.8', '1')),
+        borderWidth: 1
+      }]
+    },
+    options: {
+      ...commonChartOptions,
+      indexAxis: 'y',
+      plugins: {
+        ...commonChartOptions.plugins,
+        legend: {
+          display: false
+        }
+      }
+    }
+  });
+
+  // Gate Lengths Pie Chart
+  chartInstances.gateLengthPieChart = new Chart(document.getElementById('gateLengthPieChart'), {
+    type: 'doughnut',
+    data: {
+      labels: gateLabels,
+      datasets: [{
+        data: gateLengths,
+        backgroundColor: gateColors,
+        borderWidth: 1,
+        hoverOffset: 15
+      }]
+    },
+    options: {
+      ...commonChartOptions,
+      plugins: {
+        ...commonChartOptions.plugins,
+        legend: {
+          position: 'bottom'
+        }
+      }
+    }
+  });
+
+  // T1 vs T2 Scatter Chart
+  chartInstances.scatterChart = new Chart(document.getElementById('scatterChart'), {
+    type: 'scatter',
+    data: {
+      datasets: [{
+        label: 'Qubit Performance',
+        data: qubitLabels.map((label, index) => ({
+          x: T1[index],
+          y: T2[index],
+          label: label
+        })),
+        backgroundColor: 'rgba(75, 192, 192, 0.6)',
+        borderColor: 'rgba(75, 192, 192, 1)',
+        pointRadius: 6,
+        pointHoverRadius: 8
+      }]
+    },
+    options: {
+      ...commonChartOptions,
+      plugins: {
+        ...commonChartOptions.plugins,
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `Qubit ${context.raw.label}: T1=${context.raw.x}μs, T2=${context.raw.y}μs`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'T1 (μs)'
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'T2 (μs)'
+          }
+        }
+      }
+    }
+  });
+
+  // Error Rates Bubble Chart
+  chartInstances.bubbleChart = new Chart(document.getElementById('bubbleChart'), {
+    type: 'bubble',
+    data: {
+      datasets: [{
+        label: 'Error Metrics',
+        data: qubitLabels.map((label, index) => ({
+          x: readoutErr[index] * 1000, // Scale for better visualization
+          y: T1[index] / Math.max(...T1) * 10, // Normalize for visualization
+          r: T2[index] / Math.max(...T2) * 15, // Normalize bubble size
+          label: label
+        })),
+        backgroundColor: 'rgba(153, 102, 255, 0.6)',
+        borderColor: 'rgba(153, 102, 255, 1)'
+      }]
+    },
+    options: {
+      ...commonChartOptions,
+      plugins: {
+        ...commonChartOptions.plugins,
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `Qubit ${context.raw.label}: Readout Error=${(context.raw.x / 1000).toFixed(4)}, T1=${T1[context.dataIndex]}μs, T2=${T2[context.dataIndex]}μs`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Readout Error (scaled)'
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: 'T1 (normalized)'
+          }
+        }
+      }
+    }
+  });
+});
+
+// Zoom functions
+function zoomChart(chartId, factor) {
+  if (chartInstances[chartId]) {
+    const chart = chartInstances[chartId];
+    const zoomFactor = 1 + factor;
+    chart.zoom(zoomFactor);
+  }
+}
+
+function resetZoom(chartId) {
+  if (chartInstances[chartId]) {
+    chartInstances[chartId].resetZoom();
+  }
+}
+
+// Filter functions
+document.getElementById('timeRange').addEventListener('change', function() {
+  // In a real app, this would fetch new data based on the selected time range
+  console.log('Time range changed to:', this.value);
+  // simulateDataRefresh();
+});
+
+document.getElementById('qubitSelection').addEventListener('change', function() {
+  // Filter charts based on selected qubit
+  console.log('Qubit selection changed to:', this.value);
+});
+
+document.getElementById('metricSelection').addEventListener('change', function() {
+  // Filter charts based on selected metric
+  console.log('Metric selection changed to:', this.value);
+});
+
+// Simulate data refresh
+function refreshBackendData() {
+  const refreshBtn = document.querySelector('button[onclick="refreshBackendData()"]');
+  const originalText = refreshBtn.innerHTML;
+
+  refreshBtn.disabled = true;
+  refreshBtn.innerHTML = '<i class="bi bi-arrow-clockwise spin me-1"></i>Refreshing...';
+
+  // Simulate API call
+  setTimeout(() => {
+    // In a real app, this would fetch new data from the server
+    // and update the charts accordingly
+    refreshBtn.disabled = false;
+    refreshBtn.innerHTML = originalText;
+
+    // Update last updated time
+    const now = new Date();
+    document.getElementById('lastUpdatedTime').textContent = now.toLocaleTimeString();
+
+    // Show success notification
+    showNotification('Data refreshed successfully!', 'success');
+  }, 1500);
+}
+
+// Show notification
+function showNotification(message, type = 'info') {
+  // Create notification element
+  const notification = document.createElement('div');
+  notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+  notification.style.cssText = 'top: 20px; right: 20px; z-index: 1050; min-width: 300px;';
+  notification.innerHTML = `
+    ${message}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  `;
+
+  // Add to page
+  document.body.appendChild(notification);
+
+  // Auto remove after 3 seconds
+  setTimeout(() => {
+    if (notification.parentNode) {
+      notification.remove();
+    }
+  }, 3000);
+}
+
+// Add spin animation for refresh icon
+const style = document.createElement('style');
+style.textContent = `
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.bi-arrow-clockwise.spin {
+  animation: spin 1s linear infinite;
+}
+`;
+document.head.appendChild(style);
+</script>
+{% endblock %}

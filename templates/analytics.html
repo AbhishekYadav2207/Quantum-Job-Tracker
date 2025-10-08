@@ -1,0 +1,295 @@
+<!-- [file name]: templates/analytics.html -->
+<!-- [file content begin] -->
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="container-fluid">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-graph-up"></i> Analytics & Insights</h2>
+    {% if user_id %}
+    <span class="badge bg-info">User: {{ user_id[:8] }}...</span>
+    {% endif %}
+  </div>
+
+  <!-- Debug Information (can be removed later) -->
+  {% if analytics.total_jobs == 0 %}
+  <div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle"></i>
+    <strong>Debug Info:</strong> No jobs found in analytics data.
+    <a href="{{ url_for('jobs') }}" class="alert-link">Check jobs page</a> to see if jobs exist there.
+    <div class="mt-2 small">
+      Jobs data structure: {{ analytics|tojson|safe }}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Summary Cards -->
+  <div class="row">
+    <div class="col-md-3 mb-4">
+      <div class="card text-center bg-primary text-white shadow-sm">
+        <div class="card-body">
+          <h3 class="card-title">{{ analytics.total_jobs }}</h3>
+          <p class="card-text">Total Jobs</p>
+          <i class="bi bi-stack display-4 opacity-50"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 mb-4">
+      <div class="card text-center bg-success text-white shadow-sm">
+        <div class="card-body">
+          <h3 class="card-title">{{ "%.1f"|format(analytics.success_rate) }}%</h3>
+          <p class="card-text">Success Rate</p>
+          <i class="bi bi-check-circle display-4 opacity-50"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 mb-4">
+      <div class="card text-center bg-info text-white shadow-sm">
+        <div class="card-body">
+          <h3 class="card-title">
+            {% if analytics.average_queue_time < 60 %}
+              {{ "%.0f"|format(analytics.average_queue_time) }}s
+            {% else %}
+              {{ "%.1f"|format(analytics.average_queue_time / 60) }}m
+            {% endif %}
+          </h3>
+          <p class="card-text">Avg Queue Time</p>
+          <i class="bi bi-clock display-4 opacity-50"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3 mb-4">
+      <div class="card text-center bg-warning text-white shadow-sm">
+        <div class="card-body">
+          <h3 class="card-title">{{ analytics.jobs_by_backend|length }}</h3>
+          <p class="card-text">Backends Used</p>
+          <i class="bi bi-server display-4 opacity-50"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if analytics.total_jobs > 0 %}
+  <div class="row">
+    <!-- Jobs by Status Chart -->
+    <div class="col-md-6 mb-4">
+      <div class="card shadow-sm">
+        <div class="card-header bg-dark text-white">
+          <h5 class="card-title mb-0">Jobs by Status</h5>
+        </div>
+        <div class="card-body">
+          {% if analytics.jobs_by_status %}
+          <canvas id="statusChart" height="250"></canvas>
+          {% else %}
+          <div class="text-center py-4 text-muted">
+            <i class="bi bi-pie-chart display-4"></i>
+            <p>No status data available</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Jobs by Backend Chart -->
+    <div class="col-md-6 mb-4">
+      <div class="card shadow-sm">
+        <div class="card-header bg-dark text-white">
+          <h5 class="card-title mb-0">Jobs by Backend</h5>
+        </div>
+        <div class="card-body">
+          {% if analytics.jobs_by_backend %}
+          <canvas id="backendChart" height="250"></canvas>
+          {% else %}
+          <div class="text-center py-4 text-muted">
+            <i class="bi bi-bar-chart display-4"></i>
+            <p>No backend data available</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Activity -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-dark text-white">
+      <h5 class="card-title mb-0">Recent Activity</h5>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Job ID</th>
+              <th>Status</th>
+              <th>Backend</th>
+              <th>Timestamp</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for activity in analytics.recent_activity %}
+            <tr>
+              <td>
+                <code>{{ activity.job_id|truncate(12) }}</code>
+              </td>
+              <td>
+                <span class="badge bg-{{
+                  'success' if activity.last_event == 'COMPLETED' or activity.last_event == 'DONE'
+                  else 'warning' if activity.last_event in ['RUNNING', 'QUEUED']
+                  else 'danger' if activity.last_event in ['FAILED', 'CANCELLED']
+                  else 'secondary'
+                }}">
+                  {{ activity.last_event }}
+                </span>
+              </td>
+              <td>
+                {% for backend, count in analytics.jobs_by_backend.items() %}
+                  {% if activity.job_id in backend %} {# Simplified association #}
+                    {{ backend }}
+                  {% endif %}
+                {% endfor %}
+              </td>
+              <td>{{ activity.timestamp }}</td>
+              <td>
+                <a href="{{ url_for('job_details', job_id=activity.job_id) }}"
+                   class="btn btn-sm btn-outline-primary">
+                  <i class="bi bi-eye"></i> View
+                </a>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="5" class="text-center py-4 text-muted">
+                <i class="bi bi-inbox display-4"></i>
+                <p>No recent activity</p>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <!-- Empty State -->
+  <div class="text-center py-5">
+    <div class="bg-light rounded-circle p-4 d-inline-block mb-4">
+      <i class="bi bi-graph-up display-1 text-muted"></i>
+    </div>
+    <h4 class="text-muted">No analytics data available</h4>
+    <p class="text-secondary mb-4">Submit some quantum jobs to see analytics</p>
+
+    <a href="{{ url_for('dashboard') }}" class="btn btn-primary me-3">
+      <i class="bi bi-speedometer2 me-2"></i>Go to Dashboard
+    </a>
+    <a href="{{ url_for('jobs') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-list-task me-2"></i>View Jobs
+    </a>
+  </div>
+  {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  {% if analytics.jobs_by_status %}
+  // Status Chart
+  const statusCtx = document.getElementById('statusChart').getContext('2d');
+  const statusLabels = [
+    {% for status, count in analytics.jobs_by_status.items() %}
+    '{{ status }}',
+    {% endfor %}
+  ];
+  const statusData = [
+    {% for status, count in analytics.jobs_by_status.items() %}
+    {{ count }},
+    {% endfor %}
+  ];
+  const statusColors = [
+    {% for status, count in analytics.jobs_by_status.items() %}
+    {% if status == 'COMPLETED' or status == 'DONE' %}'rgba(40, 167, 69, 0.7)',
+    {% elif status in ['RUNNING', 'QUEUED'] %}'rgba(255, 193, 7, 0.7)',
+    {% elif status in ['FAILED', 'CANCELLED'] %}'rgba(220, 53, 69, 0.7)',
+    {% else %}'rgba(108, 117, 125, 0.7)'{% endif %}
+    {% endfor %}
+  ];
+
+  new Chart(statusCtx, {
+    type: 'doughnut',
+    data: {
+      labels: statusLabels,
+      datasets: [{
+        data: statusData,
+        backgroundColor: statusColors,
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          position: 'right',
+        },
+        title: {
+          display: true,
+          text: 'Job Status Distribution'
+        }
+      }
+    }
+  });
+  {% endif %}
+
+  {% if analytics.jobs_by_backend %}
+  // Backend Chart
+  const backendCtx = document.getElementById('backendChart').getContext('2d');
+  const backendLabels = [
+    {% for backend, count in analytics.jobs_by_backend.items() %}
+    '{{ backend }}',
+    {% endfor %}
+  ];
+  const backendData = [
+    {% for backend, count in analytics.jobs_by_backend.items() %}
+    {{ count }},
+    {% endfor %}
+  ];
+
+  new Chart(backendCtx, {
+    type: 'polarArea',
+    data: {
+      labels: backendLabels,
+      datasets: [{
+        data: backendData,
+        backgroundColor: [
+          'rgba(255, 99, 132, 0.7)',
+          'rgba(54, 162, 235, 0.7)',
+          'rgba(255, 206, 86, 0.7)',
+          'rgba(75, 192, 192, 0.7)',
+          'rgba(153, 102, 255, 0.7)',
+          'rgba(255, 159, 64, 0.7)',
+          'rgba(199, 199, 199, 0.7)',
+          'rgba(83, 102, 255, 0.7)',
+          'rgba(40, 159, 64, 0.7)',
+          'rgba(210, 99, 132, 0.7)'
+        ],
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          position: 'right',
+        },
+        title: {
+          display: true,
+          text: 'Jobs by Backend'
+        }
+      }
+    }
+  });
+  {% endif %}
+});
+</script>
+{% endblock %}
+<!-- [file content end] -->
